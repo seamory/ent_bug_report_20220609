@@ -2,7 +2,9 @@ package bug
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"strconv"
 	"testing"
@@ -56,9 +58,22 @@ func TestBugMaria(t *testing.T) {
 
 func test(t *testing.T, client *ent.Client) {
 	ctx := context.Background()
-	client.User.Delete().ExecX(ctx)
-	client.User.Create().SetName("Ariel").SetAge(30).ExecX(ctx)
-	if n := client.User.Query().CountX(ctx); n != 1 {
-		t.Errorf("unexpected number of users: %d", n)
+	// add basic records
+	item1 := client.Hierarchy.Create().SetName("test1").SetDescribe("test1").SaveX(ctx)
+	item2 := client.Hierarchy.Create().SetName("test2").SetDescribe("test2").SaveX(ctx)
+	item3 := client.Hierarchy.Create().SetName("test3").SetDescribe("test3").SaveX(ctx)
+	// switch to debug mode
+	data := client.Debug().Hierarchy.GetX(ctx, item2.ID)
+	// when do add child ids
+	data.Update().AddChildIDs(item3.ID).Save(ctx)
+	// when do add parent ids
+	data.Update().AddParentIDs(item1.ID).Save(ctx)
+	// print result
+	// should be item1 is item2 parent, item2 is item3 parent. but not, item3 is also item2 parent.
+	result := client.Hierarchy.Query().WithChild().WithParent().AllX(ctx)
+	if blob, err := json.Marshal(result); err != nil {
+		log.Fatalln(err)
+	} else {
+		fmt.Println(string(blob))
 	}
 }

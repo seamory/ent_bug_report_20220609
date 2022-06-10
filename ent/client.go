@@ -9,10 +9,11 @@ import (
 
 	"entgo.io/bug/ent/migrate"
 
-	"entgo.io/bug/ent/user"
+	"entgo.io/bug/ent/hierarchy"
 
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqlgraph"
 )
 
 // Client is the client that holds all ent builders.
@@ -20,8 +21,8 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
-	// User is the client for interacting with the User builders.
-	User *UserClient
+	// Hierarchy is the client for interacting with the Hierarchy builders.
+	Hierarchy *HierarchyClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -35,7 +36,7 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
-	c.User = NewUserClient(c.config)
+	c.Hierarchy = NewHierarchyClient(c.config)
 }
 
 // Open opens a database/sql.DB specified by the driver name and
@@ -67,9 +68,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:    ctx,
-		config: cfg,
-		User:   NewUserClient(cfg),
+		ctx:       ctx,
+		config:    cfg,
+		Hierarchy: NewHierarchyClient(cfg),
 	}, nil
 }
 
@@ -87,16 +88,16 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:    ctx,
-		config: cfg,
-		User:   NewUserClient(cfg),
+		ctx:       ctx,
+		config:    cfg,
+		Hierarchy: NewHierarchyClient(cfg),
 	}, nil
 }
 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		User.
+//		Hierarchy.
 //		Query().
 //		Count(ctx)
 //
@@ -119,87 +120,87 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
-	c.User.Use(hooks...)
+	c.Hierarchy.Use(hooks...)
 }
 
-// UserClient is a client for the User schema.
-type UserClient struct {
+// HierarchyClient is a client for the Hierarchy schema.
+type HierarchyClient struct {
 	config
 }
 
-// NewUserClient returns a client for the User from the given config.
-func NewUserClient(c config) *UserClient {
-	return &UserClient{config: c}
+// NewHierarchyClient returns a client for the Hierarchy from the given config.
+func NewHierarchyClient(c config) *HierarchyClient {
+	return &HierarchyClient{config: c}
 }
 
 // Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `user.Hooks(f(g(h())))`.
-func (c *UserClient) Use(hooks ...Hook) {
-	c.hooks.User = append(c.hooks.User, hooks...)
+// A call to `Use(f, g, h)` equals to `hierarchy.Hooks(f(g(h())))`.
+func (c *HierarchyClient) Use(hooks ...Hook) {
+	c.hooks.Hierarchy = append(c.hooks.Hierarchy, hooks...)
 }
 
-// Create returns a create builder for User.
-func (c *UserClient) Create() *UserCreate {
-	mutation := newUserMutation(c.config, OpCreate)
-	return &UserCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+// Create returns a create builder for Hierarchy.
+func (c *HierarchyClient) Create() *HierarchyCreate {
+	mutation := newHierarchyMutation(c.config, OpCreate)
+	return &HierarchyCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
-// CreateBulk returns a builder for creating a bulk of User entities.
-func (c *UserClient) CreateBulk(builders ...*UserCreate) *UserCreateBulk {
-	return &UserCreateBulk{config: c.config, builders: builders}
+// CreateBulk returns a builder for creating a bulk of Hierarchy entities.
+func (c *HierarchyClient) CreateBulk(builders ...*HierarchyCreate) *HierarchyCreateBulk {
+	return &HierarchyCreateBulk{config: c.config, builders: builders}
 }
 
-// Update returns an update builder for User.
-func (c *UserClient) Update() *UserUpdate {
-	mutation := newUserMutation(c.config, OpUpdate)
-	return &UserUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+// Update returns an update builder for Hierarchy.
+func (c *HierarchyClient) Update() *HierarchyUpdate {
+	mutation := newHierarchyMutation(c.config, OpUpdate)
+	return &HierarchyUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
 // UpdateOne returns an update builder for the given entity.
-func (c *UserClient) UpdateOne(u *User) *UserUpdateOne {
-	mutation := newUserMutation(c.config, OpUpdateOne, withUser(u))
-	return &UserUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+func (c *HierarchyClient) UpdateOne(h *Hierarchy) *HierarchyUpdateOne {
+	mutation := newHierarchyMutation(c.config, OpUpdateOne, withHierarchy(h))
+	return &HierarchyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
 // UpdateOneID returns an update builder for the given id.
-func (c *UserClient) UpdateOneID(id int) *UserUpdateOne {
-	mutation := newUserMutation(c.config, OpUpdateOne, withUserID(id))
-	return &UserUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+func (c *HierarchyClient) UpdateOneID(id int) *HierarchyUpdateOne {
+	mutation := newHierarchyMutation(c.config, OpUpdateOne, withHierarchyID(id))
+	return &HierarchyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
-// Delete returns a delete builder for User.
-func (c *UserClient) Delete() *UserDelete {
-	mutation := newUserMutation(c.config, OpDelete)
-	return &UserDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+// Delete returns a delete builder for Hierarchy.
+func (c *HierarchyClient) Delete() *HierarchyDelete {
+	mutation := newHierarchyMutation(c.config, OpDelete)
+	return &HierarchyDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
 // DeleteOne returns a delete builder for the given entity.
-func (c *UserClient) DeleteOne(u *User) *UserDeleteOne {
-	return c.DeleteOneID(u.ID)
+func (c *HierarchyClient) DeleteOne(h *Hierarchy) *HierarchyDeleteOne {
+	return c.DeleteOneID(h.ID)
 }
 
 // DeleteOneID returns a delete builder for the given id.
-func (c *UserClient) DeleteOneID(id int) *UserDeleteOne {
-	builder := c.Delete().Where(user.ID(id))
+func (c *HierarchyClient) DeleteOneID(id int) *HierarchyDeleteOne {
+	builder := c.Delete().Where(hierarchy.ID(id))
 	builder.mutation.id = &id
 	builder.mutation.op = OpDeleteOne
-	return &UserDeleteOne{builder}
+	return &HierarchyDeleteOne{builder}
 }
 
-// Query returns a query builder for User.
-func (c *UserClient) Query() *UserQuery {
-	return &UserQuery{
+// Query returns a query builder for Hierarchy.
+func (c *HierarchyClient) Query() *HierarchyQuery {
+	return &HierarchyQuery{
 		config: c.config,
 	}
 }
 
-// Get returns a User entity by its id.
-func (c *UserClient) Get(ctx context.Context, id int) (*User, error) {
-	return c.Query().Where(user.ID(id)).Only(ctx)
+// Get returns a Hierarchy entity by its id.
+func (c *HierarchyClient) Get(ctx context.Context, id int) (*Hierarchy, error) {
+	return c.Query().Where(hierarchy.ID(id)).Only(ctx)
 }
 
 // GetX is like Get, but panics if an error occurs.
-func (c *UserClient) GetX(ctx context.Context, id int) *User {
+func (c *HierarchyClient) GetX(ctx context.Context, id int) *Hierarchy {
 	obj, err := c.Get(ctx, id)
 	if err != nil {
 		panic(err)
@@ -207,7 +208,39 @@ func (c *UserClient) GetX(ctx context.Context, id int) *User {
 	return obj
 }
 
+// QueryChild queries the child edge of a Hierarchy.
+func (c *HierarchyClient) QueryChild(h *Hierarchy) *HierarchyQuery {
+	query := &HierarchyQuery{config: c.config}
+	query.path = func(ctx context.Context) (fromV *sql.Selector, _ error) {
+		id := h.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(hierarchy.Table, hierarchy.FieldID, id),
+			sqlgraph.To(hierarchy.Table, hierarchy.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, hierarchy.ChildTable, hierarchy.ChildPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(h.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryParent queries the parent edge of a Hierarchy.
+func (c *HierarchyClient) QueryParent(h *Hierarchy) *HierarchyQuery {
+	query := &HierarchyQuery{config: c.config}
+	query.path = func(ctx context.Context) (fromV *sql.Selector, _ error) {
+		id := h.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(hierarchy.Table, hierarchy.FieldID, id),
+			sqlgraph.To(hierarchy.Table, hierarchy.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, hierarchy.ParentTable, hierarchy.ParentPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(h.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
-func (c *UserClient) Hooks() []Hook {
-	return c.hooks.User
+func (c *HierarchyClient) Hooks() []Hook {
+	return c.hooks.Hierarchy
 }

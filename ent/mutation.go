@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"sync"
 
+	"entgo.io/bug/ent/hierarchy"
 	"entgo.io/bug/ent/predicate"
-	"entgo.io/bug/ent/user"
 
 	"entgo.io/ent"
 )
@@ -23,35 +23,42 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeUser = "User"
+	TypeHierarchy = "Hierarchy"
 )
 
-// UserMutation represents an operation that mutates the User nodes in the graph.
-type UserMutation struct {
+// HierarchyMutation represents an operation that mutates the Hierarchy nodes in the graph.
+type HierarchyMutation struct {
 	config
 	op            Op
 	typ           string
 	id            *int
-	age           *int
-	addage        *int
 	name          *string
+	describe      *string
+	sort          *int
+	addsort       *int
 	clearedFields map[string]struct{}
+	child         map[int]struct{}
+	removedchild  map[int]struct{}
+	clearedchild  bool
+	parent        map[int]struct{}
+	removedparent map[int]struct{}
+	clearedparent bool
 	done          bool
-	oldValue      func(context.Context) (*User, error)
-	predicates    []predicate.User
+	oldValue      func(context.Context) (*Hierarchy, error)
+	predicates    []predicate.Hierarchy
 }
 
-var _ ent.Mutation = (*UserMutation)(nil)
+var _ ent.Mutation = (*HierarchyMutation)(nil)
 
-// userOption allows management of the mutation configuration using functional options.
-type userOption func(*UserMutation)
+// hierarchyOption allows management of the mutation configuration using functional options.
+type hierarchyOption func(*HierarchyMutation)
 
-// newUserMutation creates new mutation for the User entity.
-func newUserMutation(c config, op Op, opts ...userOption) *UserMutation {
-	m := &UserMutation{
+// newHierarchyMutation creates new mutation for the Hierarchy entity.
+func newHierarchyMutation(c config, op Op, opts ...hierarchyOption) *HierarchyMutation {
+	m := &HierarchyMutation{
 		config:        c,
 		op:            op,
-		typ:           TypeUser,
+		typ:           TypeHierarchy,
 		clearedFields: make(map[string]struct{}),
 	}
 	for _, opt := range opts {
@@ -60,20 +67,20 @@ func newUserMutation(c config, op Op, opts ...userOption) *UserMutation {
 	return m
 }
 
-// withUserID sets the ID field of the mutation.
-func withUserID(id int) userOption {
-	return func(m *UserMutation) {
+// withHierarchyID sets the ID field of the mutation.
+func withHierarchyID(id int) hierarchyOption {
+	return func(m *HierarchyMutation) {
 		var (
 			err   error
 			once  sync.Once
-			value *User
+			value *Hierarchy
 		)
-		m.oldValue = func(ctx context.Context) (*User, error) {
+		m.oldValue = func(ctx context.Context) (*Hierarchy, error) {
 			once.Do(func() {
 				if m.done {
 					err = errors.New("querying old values post mutation is not allowed")
 				} else {
-					value, err = m.Client().User.Get(ctx, id)
+					value, err = m.Client().Hierarchy.Get(ctx, id)
 				}
 			})
 			return value, err
@@ -82,10 +89,10 @@ func withUserID(id int) userOption {
 	}
 }
 
-// withUser sets the old User of the mutation.
-func withUser(node *User) userOption {
-	return func(m *UserMutation) {
-		m.oldValue = func(context.Context) (*User, error) {
+// withHierarchy sets the old Hierarchy of the mutation.
+func withHierarchy(node *Hierarchy) hierarchyOption {
+	return func(m *HierarchyMutation) {
+		m.oldValue = func(context.Context) (*Hierarchy, error) {
 			return node, nil
 		}
 		m.id = &node.ID
@@ -94,7 +101,7 @@ func withUser(node *User) userOption {
 
 // Client returns a new `ent.Client` from the mutation. If the mutation was
 // executed in a transaction (ent.Tx), a transactional client is returned.
-func (m UserMutation) Client() *Client {
+func (m HierarchyMutation) Client() *Client {
 	client := &Client{config: m.config}
 	client.init()
 	return client
@@ -102,7 +109,7 @@ func (m UserMutation) Client() *Client {
 
 // Tx returns an `ent.Tx` for mutations that were executed in transactions;
 // it returns an error otherwise.
-func (m UserMutation) Tx() (*Tx, error) {
+func (m HierarchyMutation) Tx() (*Tx, error) {
 	if _, ok := m.driver.(*txDriver); !ok {
 		return nil, errors.New("ent: mutation is not running in a transaction")
 	}
@@ -113,7 +120,7 @@ func (m UserMutation) Tx() (*Tx, error) {
 
 // ID returns the ID value in the mutation. Note that the ID is only available
 // if it was provided to the builder or after it was returned from the database.
-func (m *UserMutation) ID() (id int, exists bool) {
+func (m *HierarchyMutation) ID() (id int, exists bool) {
 	if m.id == nil {
 		return
 	}
@@ -124,7 +131,7 @@ func (m *UserMutation) ID() (id int, exists bool) {
 // That means, if the mutation is applied within a transaction with an isolation level such
 // as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
 // or updated by the mutation.
-func (m *UserMutation) IDs(ctx context.Context) ([]int, error) {
+func (m *HierarchyMutation) IDs(ctx context.Context) ([]int, error) {
 	switch {
 	case m.op.Is(OpUpdateOne | OpDeleteOne):
 		id, exists := m.ID()
@@ -133,75 +140,19 @@ func (m *UserMutation) IDs(ctx context.Context) ([]int, error) {
 		}
 		fallthrough
 	case m.op.Is(OpUpdate | OpDelete):
-		return m.Client().User.Query().Where(m.predicates...).IDs(ctx)
+		return m.Client().Hierarchy.Query().Where(m.predicates...).IDs(ctx)
 	default:
 		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
 	}
 }
 
-// SetAge sets the "age" field.
-func (m *UserMutation) SetAge(i int) {
-	m.age = &i
-	m.addage = nil
-}
-
-// Age returns the value of the "age" field in the mutation.
-func (m *UserMutation) Age() (r int, exists bool) {
-	v := m.age
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAge returns the old "age" field's value of the User entity.
-// If the User object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserMutation) OldAge(ctx context.Context) (v int, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAge is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAge requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAge: %w", err)
-	}
-	return oldValue.Age, nil
-}
-
-// AddAge adds i to the "age" field.
-func (m *UserMutation) AddAge(i int) {
-	if m.addage != nil {
-		*m.addage += i
-	} else {
-		m.addage = &i
-	}
-}
-
-// AddedAge returns the value that was added to the "age" field in this mutation.
-func (m *UserMutation) AddedAge() (r int, exists bool) {
-	v := m.addage
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetAge resets all changes to the "age" field.
-func (m *UserMutation) ResetAge() {
-	m.age = nil
-	m.addage = nil
-}
-
 // SetName sets the "name" field.
-func (m *UserMutation) SetName(s string) {
+func (m *HierarchyMutation) SetName(s string) {
 	m.name = &s
 }
 
 // Name returns the value of the "name" field in the mutation.
-func (m *UserMutation) Name() (r string, exists bool) {
+func (m *HierarchyMutation) Name() (r string, exists bool) {
 	v := m.name
 	if v == nil {
 		return
@@ -209,10 +160,10 @@ func (m *UserMutation) Name() (r string, exists bool) {
 	return *v, true
 }
 
-// OldName returns the old "name" field's value of the User entity.
-// If the User object wasn't provided to the builder, the object is fetched from the database.
+// OldName returns the old "name" field's value of the Hierarchy entity.
+// If the Hierarchy object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserMutation) OldName(ctx context.Context) (v string, err error) {
+func (m *HierarchyMutation) OldName(ctx context.Context) (v string, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldName is only allowed on UpdateOne operations")
 	}
@@ -227,35 +178,238 @@ func (m *UserMutation) OldName(ctx context.Context) (v string, err error) {
 }
 
 // ResetName resets all changes to the "name" field.
-func (m *UserMutation) ResetName() {
+func (m *HierarchyMutation) ResetName() {
 	m.name = nil
 }
 
-// Where appends a list predicates to the UserMutation builder.
-func (m *UserMutation) Where(ps ...predicate.User) {
+// SetDescribe sets the "describe" field.
+func (m *HierarchyMutation) SetDescribe(s string) {
+	m.describe = &s
+}
+
+// Describe returns the value of the "describe" field in the mutation.
+func (m *HierarchyMutation) Describe() (r string, exists bool) {
+	v := m.describe
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescribe returns the old "describe" field's value of the Hierarchy entity.
+// If the Hierarchy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HierarchyMutation) OldDescribe(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescribe is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescribe requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescribe: %w", err)
+	}
+	return oldValue.Describe, nil
+}
+
+// ResetDescribe resets all changes to the "describe" field.
+func (m *HierarchyMutation) ResetDescribe() {
+	m.describe = nil
+}
+
+// SetSort sets the "sort" field.
+func (m *HierarchyMutation) SetSort(i int) {
+	m.sort = &i
+	m.addsort = nil
+}
+
+// Sort returns the value of the "sort" field in the mutation.
+func (m *HierarchyMutation) Sort() (r int, exists bool) {
+	v := m.sort
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSort returns the old "sort" field's value of the Hierarchy entity.
+// If the Hierarchy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *HierarchyMutation) OldSort(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSort is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSort requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSort: %w", err)
+	}
+	return oldValue.Sort, nil
+}
+
+// AddSort adds i to the "sort" field.
+func (m *HierarchyMutation) AddSort(i int) {
+	if m.addsort != nil {
+		*m.addsort += i
+	} else {
+		m.addsort = &i
+	}
+}
+
+// AddedSort returns the value that was added to the "sort" field in this mutation.
+func (m *HierarchyMutation) AddedSort() (r int, exists bool) {
+	v := m.addsort
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSort resets all changes to the "sort" field.
+func (m *HierarchyMutation) ResetSort() {
+	m.sort = nil
+	m.addsort = nil
+}
+
+// AddChildIDs adds the "child" edge to the Hierarchy entity by ids.
+func (m *HierarchyMutation) AddChildIDs(ids ...int) {
+	if m.child == nil {
+		m.child = make(map[int]struct{})
+	}
+	for i := range ids {
+		m.child[ids[i]] = struct{}{}
+	}
+}
+
+// ClearChild clears the "child" edge to the Hierarchy entity.
+func (m *HierarchyMutation) ClearChild() {
+	m.clearedchild = true
+}
+
+// ChildCleared reports if the "child" edge to the Hierarchy entity was cleared.
+func (m *HierarchyMutation) ChildCleared() bool {
+	return m.clearedchild
+}
+
+// RemoveChildIDs removes the "child" edge to the Hierarchy entity by IDs.
+func (m *HierarchyMutation) RemoveChildIDs(ids ...int) {
+	if m.removedchild == nil {
+		m.removedchild = make(map[int]struct{})
+	}
+	for i := range ids {
+		delete(m.child, ids[i])
+		m.removedchild[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedChild returns the removed IDs of the "child" edge to the Hierarchy entity.
+func (m *HierarchyMutation) RemovedChildIDs() (ids []int) {
+	for id := range m.removedchild {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ChildIDs returns the "child" edge IDs in the mutation.
+func (m *HierarchyMutation) ChildIDs() (ids []int) {
+	for id := range m.child {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetChild resets all changes to the "child" edge.
+func (m *HierarchyMutation) ResetChild() {
+	m.child = nil
+	m.clearedchild = false
+	m.removedchild = nil
+}
+
+// AddParentIDs adds the "parent" edge to the Hierarchy entity by ids.
+func (m *HierarchyMutation) AddParentIDs(ids ...int) {
+	if m.parent == nil {
+		m.parent = make(map[int]struct{})
+	}
+	for i := range ids {
+		m.parent[ids[i]] = struct{}{}
+	}
+}
+
+// ClearParent clears the "parent" edge to the Hierarchy entity.
+func (m *HierarchyMutation) ClearParent() {
+	m.clearedparent = true
+}
+
+// ParentCleared reports if the "parent" edge to the Hierarchy entity was cleared.
+func (m *HierarchyMutation) ParentCleared() bool {
+	return m.clearedparent
+}
+
+// RemoveParentIDs removes the "parent" edge to the Hierarchy entity by IDs.
+func (m *HierarchyMutation) RemoveParentIDs(ids ...int) {
+	if m.removedparent == nil {
+		m.removedparent = make(map[int]struct{})
+	}
+	for i := range ids {
+		delete(m.parent, ids[i])
+		m.removedparent[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedParent returns the removed IDs of the "parent" edge to the Hierarchy entity.
+func (m *HierarchyMutation) RemovedParentIDs() (ids []int) {
+	for id := range m.removedparent {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ParentIDs returns the "parent" edge IDs in the mutation.
+func (m *HierarchyMutation) ParentIDs() (ids []int) {
+	for id := range m.parent {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetParent resets all changes to the "parent" edge.
+func (m *HierarchyMutation) ResetParent() {
+	m.parent = nil
+	m.clearedparent = false
+	m.removedparent = nil
+}
+
+// Where appends a list predicates to the HierarchyMutation builder.
+func (m *HierarchyMutation) Where(ps ...predicate.Hierarchy) {
 	m.predicates = append(m.predicates, ps...)
 }
 
 // Op returns the operation name.
-func (m *UserMutation) Op() Op {
+func (m *HierarchyMutation) Op() Op {
 	return m.op
 }
 
-// Type returns the node type of this mutation (User).
-func (m *UserMutation) Type() string {
+// Type returns the node type of this mutation (Hierarchy).
+func (m *HierarchyMutation) Type() string {
 	return m.typ
 }
 
 // Fields returns all fields that were changed during this mutation. Note that in
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
-func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 2)
-	if m.age != nil {
-		fields = append(fields, user.FieldAge)
-	}
+func (m *HierarchyMutation) Fields() []string {
+	fields := make([]string, 0, 3)
 	if m.name != nil {
-		fields = append(fields, user.FieldName)
+		fields = append(fields, hierarchy.FieldName)
+	}
+	if m.describe != nil {
+		fields = append(fields, hierarchy.FieldDescribe)
+	}
+	if m.sort != nil {
+		fields = append(fields, hierarchy.FieldSort)
 	}
 	return fields
 }
@@ -263,12 +417,14 @@ func (m *UserMutation) Fields() []string {
 // Field returns the value of a field with the given name. The second boolean
 // return value indicates that this field was not set, or was not defined in the
 // schema.
-func (m *UserMutation) Field(name string) (ent.Value, bool) {
+func (m *HierarchyMutation) Field(name string) (ent.Value, bool) {
 	switch name {
-	case user.FieldAge:
-		return m.Age()
-	case user.FieldName:
+	case hierarchy.FieldName:
 		return m.Name()
+	case hierarchy.FieldDescribe:
+		return m.Describe()
+	case hierarchy.FieldSort:
+		return m.Sort()
 	}
 	return nil, false
 }
@@ -276,45 +432,54 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 // OldField returns the old value of the field from the database. An error is
 // returned if the mutation operation is not UpdateOne, or the query to the
 // database failed.
-func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+func (m *HierarchyMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
 	switch name {
-	case user.FieldAge:
-		return m.OldAge(ctx)
-	case user.FieldName:
+	case hierarchy.FieldName:
 		return m.OldName(ctx)
+	case hierarchy.FieldDescribe:
+		return m.OldDescribe(ctx)
+	case hierarchy.FieldSort:
+		return m.OldSort(ctx)
 	}
-	return nil, fmt.Errorf("unknown User field %s", name)
+	return nil, fmt.Errorf("unknown Hierarchy field %s", name)
 }
 
 // SetField sets the value of a field with the given name. It returns an error if
 // the field is not defined in the schema, or if the type mismatched the field
 // type.
-func (m *UserMutation) SetField(name string, value ent.Value) error {
+func (m *HierarchyMutation) SetField(name string, value ent.Value) error {
 	switch name {
-	case user.FieldAge:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAge(v)
-		return nil
-	case user.FieldName:
+	case hierarchy.FieldName:
 		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetName(v)
 		return nil
+	case hierarchy.FieldDescribe:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescribe(v)
+		return nil
+	case hierarchy.FieldSort:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSort(v)
+		return nil
 	}
-	return fmt.Errorf("unknown User field %s", name)
+	return fmt.Errorf("unknown Hierarchy field %s", name)
 }
 
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
-func (m *UserMutation) AddedFields() []string {
+func (m *HierarchyMutation) AddedFields() []string {
 	var fields []string
-	if m.addage != nil {
-		fields = append(fields, user.FieldAge)
+	if m.addsort != nil {
+		fields = append(fields, hierarchy.FieldSort)
 	}
 	return fields
 }
@@ -322,10 +487,10 @@ func (m *UserMutation) AddedFields() []string {
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
-func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
+func (m *HierarchyMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
-	case user.FieldAge:
-		return m.AddedAge()
+	case hierarchy.FieldSort:
+		return m.AddedSort()
 	}
 	return nil, false
 }
@@ -333,96 +498,161 @@ func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
 // AddField adds the value to the field with the given name. It returns an error if
 // the field is not defined in the schema, or if the type mismatched the field
 // type.
-func (m *UserMutation) AddField(name string, value ent.Value) error {
+func (m *HierarchyMutation) AddField(name string, value ent.Value) error {
 	switch name {
-	case user.FieldAge:
+	case hierarchy.FieldSort:
 		v, ok := value.(int)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.AddAge(v)
+		m.AddSort(v)
 		return nil
 	}
-	return fmt.Errorf("unknown User numeric field %s", name)
+	return fmt.Errorf("unknown Hierarchy numeric field %s", name)
 }
 
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
-func (m *UserMutation) ClearedFields() []string {
+func (m *HierarchyMutation) ClearedFields() []string {
 	return nil
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
 // cleared in this mutation.
-func (m *UserMutation) FieldCleared(name string) bool {
+func (m *HierarchyMutation) FieldCleared(name string) bool {
 	_, ok := m.clearedFields[name]
 	return ok
 }
 
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
-func (m *UserMutation) ClearField(name string) error {
-	return fmt.Errorf("unknown User nullable field %s", name)
+func (m *HierarchyMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown Hierarchy nullable field %s", name)
 }
 
 // ResetField resets all changes in the mutation for the field with the given name.
 // It returns an error if the field is not defined in the schema.
-func (m *UserMutation) ResetField(name string) error {
+func (m *HierarchyMutation) ResetField(name string) error {
 	switch name {
-	case user.FieldAge:
-		m.ResetAge()
-		return nil
-	case user.FieldName:
+	case hierarchy.FieldName:
 		m.ResetName()
 		return nil
+	case hierarchy.FieldDescribe:
+		m.ResetDescribe()
+		return nil
+	case hierarchy.FieldSort:
+		m.ResetSort()
+		return nil
 	}
-	return fmt.Errorf("unknown User field %s", name)
+	return fmt.Errorf("unknown Hierarchy field %s", name)
 }
 
 // AddedEdges returns all edge names that were set/added in this mutation.
-func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 0)
+func (m *HierarchyMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.child != nil {
+		edges = append(edges, hierarchy.EdgeChild)
+	}
+	if m.parent != nil {
+		edges = append(edges, hierarchy.EdgeParent)
+	}
 	return edges
 }
 
 // AddedIDs returns all IDs (to other nodes) that were added for the given edge
 // name in this mutation.
-func (m *UserMutation) AddedIDs(name string) []ent.Value {
+func (m *HierarchyMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case hierarchy.EdgeChild:
+		ids := make([]ent.Value, 0, len(m.child))
+		for id := range m.child {
+			ids = append(ids, id)
+		}
+		return ids
+	case hierarchy.EdgeParent:
+		ids := make([]ent.Value, 0, len(m.parent))
+		for id := range m.parent {
+			ids = append(ids, id)
+		}
+		return ids
+	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
-func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 0)
+func (m *HierarchyMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.removedchild != nil {
+		edges = append(edges, hierarchy.EdgeChild)
+	}
+	if m.removedparent != nil {
+		edges = append(edges, hierarchy.EdgeParent)
+	}
 	return edges
 }
 
 // RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
 // the given name in this mutation.
-func (m *UserMutation) RemovedIDs(name string) []ent.Value {
+func (m *HierarchyMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case hierarchy.EdgeChild:
+		ids := make([]ent.Value, 0, len(m.removedchild))
+		for id := range m.removedchild {
+			ids = append(ids, id)
+		}
+		return ids
+	case hierarchy.EdgeParent:
+		ids := make([]ent.Value, 0, len(m.removedparent))
+		for id := range m.removedparent {
+			ids = append(ids, id)
+		}
+		return ids
+	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
-func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 0)
+func (m *HierarchyMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedchild {
+		edges = append(edges, hierarchy.EdgeChild)
+	}
+	if m.clearedparent {
+		edges = append(edges, hierarchy.EdgeParent)
+	}
 	return edges
 }
 
 // EdgeCleared returns a boolean which indicates if the edge with the given name
 // was cleared in this mutation.
-func (m *UserMutation) EdgeCleared(name string) bool {
+func (m *HierarchyMutation) EdgeCleared(name string) bool {
+	switch name {
+	case hierarchy.EdgeChild:
+		return m.clearedchild
+	case hierarchy.EdgeParent:
+		return m.clearedparent
+	}
 	return false
 }
 
 // ClearEdge clears the value of the edge with the given name. It returns an error
 // if that edge is not defined in the schema.
-func (m *UserMutation) ClearEdge(name string) error {
-	return fmt.Errorf("unknown User unique edge %s", name)
+func (m *HierarchyMutation) ClearEdge(name string) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Hierarchy unique edge %s", name)
 }
 
 // ResetEdge resets all changes to the edge with the given name in this mutation.
 // It returns an error if the edge is not defined in the schema.
-func (m *UserMutation) ResetEdge(name string) error {
-	return fmt.Errorf("unknown User edge %s", name)
+func (m *HierarchyMutation) ResetEdge(name string) error {
+	switch name {
+	case hierarchy.EdgeChild:
+		m.ResetChild()
+		return nil
+	case hierarchy.EdgeParent:
+		m.ResetParent()
+		return nil
+	}
+	return fmt.Errorf("unknown Hierarchy edge %s", name)
 }
